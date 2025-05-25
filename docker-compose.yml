@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SERVICE_PASSWORD_ROOT}
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: ${SERVICE_USER_WORDPRESS}
+      MYSQL_PASSWORD: ${SERVICE_PASSWORD_WORDPRESS}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 20s
+      retries: 10
+
+  wordpress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/arm64/v8
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_WORDPRESS_80
+      - WORDPRESS_DB_HOST=mysql
+      - WORDPRESS_DB_USER=${SERVICE_USER_WORDPRESS}
+      - WORDPRESS_DB_PASSWORD=${SERVICE_PASSWORD_WORDPRESS}
+      - WORDPRESS_DB_NAME=wordpress
+    volumes:
+      - wordpress-files:/var/www/html
+    expose:
+      - "80"
+    networks:
+      - default
+      - coolify-proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.wordpress.rule=Host(`${SERVICE_FQDN_WORDPRESS_80}`)
+      - traefik.http.routers.wordpress.entrypoints=websecure
+      - traefik.http.services.wordpress.loadbalancer.server.port=80
+      - traefik.docker.network=coolify-proxy
+
+volumes:
+  mysql-data:
+  wordpress-files:
+
+networks:
+  coolify-proxy:
+    external: true
